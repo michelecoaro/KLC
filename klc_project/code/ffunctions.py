@@ -1,4 +1,4 @@
-import pandas as pd
+'''import pandas as pd
 import numpy as np
 
 def load_data(csv_path):
@@ -504,3 +504,317 @@ def logistic_regression_classifier_func(train_fold, val_fold, features, target, 
     )
     val_predictions = logistic_regression_predict(val_fold, features, theta, theta_0)
     return val_predictions
+
+
+'''
+
+import pandas as pd
+import numpy as np
+
+def load_data(csv_path):
+    """
+    Loads a CSV file into a pandas DataFrame.
+    """
+    data = pd.read_csv(csv_path)
+    return data
+
+def train_test_split(df, test_size=0.2, random_state=42):
+    """
+    Splits a pandas DataFrame into train and test sets, without data leakage.
+    """
+    np.random.seed(random_state)
+    shuffled_indices = np.random.permutation(len(df))
+    test_cutoff = int(len(df) * test_size)
+    test_indices = shuffled_indices[:test_cutoff]
+    train_indices = shuffled_indices[test_cutoff:]
+    train_df = df.iloc[train_indices].reset_index(drop=True)
+    test_df = df.iloc[test_indices].reset_index(drop=True)
+    return train_df, test_df
+
+def detect_outliers_zscore(df, features, z_thresh=3.0):
+    """
+    Detects outliers in each of the specified features using a z-score threshold.
+    Returns a set of row indices (in df) that are outliers.
+    """
+    outlier_indices = set()
+    for f in features:
+        mean_f = df[f].mean()
+        std_f = df[f].std()
+        if std_f == 0:
+            continue  # skip features with zero variance
+        z_scores = ((df[f] - mean_f) / std_f).abs()
+        f_outliers = z_scores[z_scores > z_thresh].index
+        outlier_indices.update(f_outliers)
+    return outlier_indices
+
+def remove_outliers(df, outlier_indices):
+    """
+    Removes rows from df based on a set of outlier indices.
+    """
+    return df.drop(index=outlier_indices).reset_index(drop=True)
+
+def standard_scaler_fit(train_df, features):
+    """
+    Learns mean and std for each feature on the training data only.
+    """
+    means = {}
+    stds = {}
+    for f in features:
+        means[f] = train_df[f].mean()
+        stds[f] = train_df[f].std()
+    return means, stds
+
+def standard_scaler_transform(df, features, means, stds):
+    """
+    Applies the precomputed means/stds to scale the features in df.
+    Avoid data leakage by using the means/stds from training data only.
+    """
+    df_copy = df.copy()
+    for f in features:
+        if stds[f] != 0:
+            df_copy[f] = (df_copy[f] - means[f]) / stds[f]
+        else:
+            df_copy[f] = df_copy[f] - means[f]
+    return df_copy
+
+def check_high_correlation(df, features, corr_threshold=0.95):
+    """
+    Checks for pairs of features that exceed a given correlation threshold.
+    Returns a list of (feature1, feature2, corr_value) for those above the threshold.
+    """
+    corr_matrix = df[features].corr().abs()
+    high_corr_pairs = []
+    for i in range(len(features)):
+        for j in range(i+1, len(features)):
+            if corr_matrix.iloc[i, j] > corr_threshold:
+                f1 = features[i]
+                f2 = features[j]
+                high_corr_pairs.append((f1, f2, corr_matrix.iloc[i, j]))
+    return high_corr_pairs
+
+def k_fold_cross_validation(df, features, target, k=5, random_state=42, classifier_func=None):
+    """
+    Performs K-fold cross-validation on the given DataFrame.
+    Returns the mean accuracy across K folds.
+    """
+    np.random.seed(random_state)
+    indices = np.random.permutation(len(df))
+    fold_size = len(df) // k
+    accuracies = []
+
+    for fold in range(k):
+        start = fold * fold_size
+        end = start + fold_size
+        val_indices = indices[start:end]
+        train_indices = np.concatenate([indices[:start], indices[end:]])
+
+        train_fold = df.iloc[train_indices].reset_index(drop=True)
+        val_fold = df.iloc[val_indices].reset_index(drop=True)
+
+        if classifier_func is None:
+            # Dummy classifier: predict the majority class in the training fold
+            majority_class = train_fold[target].value_counts().idxmax()
+            val_predictions = np.full(len(val_fold), majority_class)
+        else:
+            val_predictions = classifier_func(train_fold, val_fold, features, target)
+
+        accuracy = (val_predictions == val_fold[target]).mean()
+        accuracies.append(accuracy)
+
+    return np.mean(accuracies)
+
+##############################################################################
+# Linear Models (Perceptron, Pegasos, Logistic)
+##############################################################################
+
+def perceptron_train(train_df, features, target, epochs=5):
+    """
+    Trains a binary Perceptron classifier. Labels must be -1 or +1.
+    """
+    X = train_df[features].values
+    y = train_df[target].values
+
+    d = len(features)
+    theta = np.zeros(d)
+    theta_0 = 0.0
+
+    for _ in range(epochs):
+        indices = np.random.permutation(len(X))
+        for i in indices:
+            x_i = X[i]
+            y_i = y[i]
+            # Perceptron update
+            if y_i * (np.dot(theta, x_i) + theta_0) <= 0:
+                theta += y_i * x_i
+                theta_0 += y_i
+
+    return theta, theta_0
+
+def perceptron_predict(df, features, theta, theta_0):
+    """
+    Predicts -1 or +1 using the trained Perceptron parameters.
+    """
+    X = df[features].values
+    scores = np.dot(X, theta) + theta_0
+    predictions = np.where(scores > 0, 1, -1)
+    return predictions
+
+def perceptron_classifier_func(train_fold, val_fold, features, target, epochs=5):
+    """
+    For k-fold CV usage: trains a Perceptron, returns predictions on val_fold.
+    """
+    theta, theta_0 = perceptron_train(train_fold, features, target, epochs=epochs)
+    return perceptron_predict(val_fold, features, theta, theta_0)
+
+def pegasos_train(train_df, features, target, lambda_param=0.01, epochs=5):
+    """
+    Trains a Pegasos SVM (linear) with hinge loss. y in {-1, +1}.
+    """
+    X = train_df[features].values
+    y = train_df[target].values
+    d = len(features)
+
+    theta = np.zeros(d)
+    theta_0 = 0.0
+    t = 1  # global iteration counter
+
+    for _ in range(epochs):
+        indices = np.random.permutation(len(X))
+        for i in indices:
+            x_i = X[i]
+            y_i = y[i]
+            eta_t = 1 / (lambda_param * t)
+            t += 1
+
+            if y_i * (np.dot(theta, x_i) + theta_0) < 1:
+                # update with hinge
+                theta = (1 - eta_t * lambda_param) * theta + eta_t * y_i * x_i
+                theta_0 += eta_t * y_i
+            else:
+                # no gradient from the hinge term
+                theta = (1 - eta_t * lambda_param) * theta
+
+    return theta, theta_0
+
+def pegasos_predict(df, features, theta, theta_0):
+    """
+    Predicts -1 or +1 for Pegasos SVM (linear).
+    """
+    X = df[features].values
+    scores = np.dot(X, theta) + theta_0
+    return np.where(scores > 0, 1, -1)
+
+def pegasos_classifier_func(train_fold, val_fold, features, target, lambda_param=0.01, epochs=5):
+    """
+    For k-fold CV usage: trains Pegasos SVM, returns predictions on val_fold.
+    """
+    theta, theta_0 = pegasos_train(train_fold, features, target,
+                                   lambda_param=lambda_param, epochs=epochs)
+    return pegasos_predict(val_fold, features, theta, theta_0)
+
+def logistic_regression_train(train_df, features, target, lambda_param=0.01, epochs=5, eta=1.0):
+    """
+    Trains a regularized logistic regression model with SGD.
+    y in {-1, +1}.
+    """
+    X = train_df[features].values
+    y = train_df[target].values
+    d = len(features)
+
+    theta = np.zeros(d)
+    theta_0 = 0.0
+    t = 1
+
+    for _ in range(epochs):
+        indices = np.random.permutation(len(X))
+        for i in indices:
+            x_i = X[i]
+            y_i = y[i]
+
+            # learning rate schedule
+            eta_t = eta / np.sqrt(t)
+            t += 1
+
+            margin = y_i * (np.dot(theta, x_i) + theta_0)
+            gradient_theta = lambda_param * theta - (y_i * x_i) / (1 + np.exp(margin))
+            gradient_theta_0 = -y_i / (1 + np.exp(margin))
+
+            theta -= eta_t * gradient_theta
+            theta_0 -= eta_t * gradient_theta_0
+
+    return theta, theta_0
+
+def logistic_regression_predict(df, features, theta, theta_0):
+    """
+    Predicts -1 or +1 for logistic regression using the sign of the linear score.
+    """
+    X = df[features].values
+    scores = np.dot(X, theta) + theta_0
+    return np.where(scores > 0, 1, -1)
+
+def logistic_regression_classifier_func(train_fold, val_fold, features, target,
+                                        lambda_param=0.01, epochs=5, eta=1.0):
+    """
+    For k-fold CV usage: trains logistic regression, returns predictions on val_fold.
+    """
+    theta, theta_0 = logistic_regression_train(
+        train_fold, features, target, lambda_param=lambda_param, epochs=epochs, eta=eta
+    )
+    return logistic_regression_predict(val_fold, features, theta, theta_0)
+
+def polynomial_feature_expansion(df, features, degree=2, include_bias=False):
+    """
+    Expands the given features in the DataFrame up to a specified polynomial degree (2 by default).
+    Specifically for degree=2, this function creates:
+      - All original features x_i
+      - All squared terms x_i^2
+      - All pairwise interaction terms x_i * x_j (for i < j)
+
+    Args:
+        df (pd.DataFrame): The DataFrame containing the features to expand.
+        features (list): List of column names (strings) in df to be expanded.
+        degree (int): Degree of polynomial expansion. Currently only supports degree=2 explicitly.
+        include_bias (bool): If True, an additional 'bias' column (all ones) is added.
+
+    Returns:
+        pd.DataFrame: A new DataFrame that contains the expanded polynomial features.
+                      The original non-expanded columns are dropped (to avoid duplication).
+    """
+    if degree != 2:
+        raise ValueError("This function currently only supports degree=2 expansion.")
+
+    # We'll work on a copy to avoid modifying the original DataFrame
+    X_original = df[features].copy()
+
+    # List to collect new feature columns
+    poly_data = {}
+
+    # 1. (Optional) add bias column
+    if include_bias:
+        poly_data['bias'] = np.ones(len(X_original))
+
+    # 2. Add the original features
+    for f in features:
+        poly_data[f] = X_original[f]
+
+    # 3. Add squared terms
+    for f in features:
+        new_col_name = f"{f}^2"
+        poly_data[new_col_name] = X_original[f] ** 2
+
+    # 4. Add pairwise interaction terms (for i < j to avoid duplicates)
+    num_feats = len(features)
+    for i in range(num_feats):
+        for j in range(i+1, num_feats):
+            f_i = features[i]
+            f_j = features[j]
+            new_col_name = f"{f_i}*{f_j}"
+            poly_data[new_col_name] = X_original[f_i] * X_original[f_j]
+
+    # Convert to a new DataFrame
+    expanded_df = pd.DataFrame(poly_data, index=df.index)
+
+    # If you want to keep the other (non-feature) columns (like target),
+    # you can merge them back. For instance:
+    other_cols = [col for col in df.columns if col not in features]
+    return pd.concat([expanded_df, df[other_cols]], axis=1)
