@@ -410,3 +410,97 @@ def pegasos_classifier_func(train_fold, val_fold, features, target, lambda_param
     theta, theta_0 = pegasos_train(train_fold, features, target, lambda_param=lambda_param, epochs=epochs)
     val_predictions = pegasos_predict(val_fold, features, theta, theta_0)
     return val_predictions
+
+def logistic_regression_train(train_df, features, target, lambda_param=0.01, epochs=5, eta=1.0):
+    """
+    Trains a regularized logistic regression model using SGD.
+    Labels must be -1 or +1.
+
+    Args:
+        train_df (pd.DataFrame): Training data containing features and target column.
+        features (list): List of feature column names (strings).
+        target (str): Name of the target column (must have values in {-1, +1}).
+        lambda_param (float): Regularization parameter (λ).
+        epochs (int): Number of passes (epochs) over the training data.
+        eta (float): Initial learning rate.
+
+    Returns:
+        theta (np.ndarray): Learned weight vector (length = number of features).
+        theta_0 (float): Learned bias term.
+    """
+    # Convert to numpy for faster operations
+    X = train_df[features].values
+    y = train_df[target].values
+
+    # Number of features
+    d = len(features)
+
+    # Initialize parameters
+    theta = np.zeros(d)
+    theta_0 = 0.0
+    t = 1  # Iteration counter
+
+    for _ in range(epochs):
+        # Shuffle the data each epoch
+        indices = np.random.permutation(len(X))
+        for i in indices:
+            x_i = X[i]
+            y_i = y[i]
+
+            # Learning rate schedule
+            eta_t = eta / np.sqrt(t)  # You can modify this as needed
+            t += 1
+
+            # Logistic loss gradient
+            margin = y_i * (np.dot(theta, x_i) + theta_0)
+            gradient_theta = lambda_param * theta - (y_i * x_i) / (1 + np.exp(margin))
+            gradient_theta_0 = -y_i / (1 + np.exp(margin))
+
+            # Update weights and bias
+            theta -= eta_t * gradient_theta
+            theta_0 -= eta_t * gradient_theta_0
+
+    return theta, theta_0
+
+def logistic_regression_predict(df, features, theta, theta_0):
+    """
+    Uses the learned logistic regression parameters to predict labels (-1 or +1).
+
+    Args:
+        df (pd.DataFrame): Data containing the features to predict.
+        features (list): List of feature names.
+        theta (np.ndarray): Learned weight vector.
+        theta_0 (float): Learned bias term.
+
+    Returns:
+        predictions (np.ndarray): 1D array of predicted labels (-1 or +1).
+    """
+    X = df[features].values
+    # Linear scores
+    scores = np.dot(X, theta) + theta_0
+    # Convert scores to probabilities and then to labels
+    predictions = np.where(scores > 0, 1, -1)
+    return predictions
+
+def logistic_regression_classifier_func(train_fold, val_fold, features, target, lambda_param=0.01, epochs=5, eta=1.0):
+    """
+    This function is designed to be passed as `classifier_func` to k_fold_cross_validation.
+    It trains logistic regression on train_fold and returns predictions for val_fold.
+
+    Args:
+        train_fold (pd.DataFrame): Training fold data.
+        val_fold (pd.DataFrame): Validation fold data.
+        features (list): List of feature names.
+        target (str): Target column name.
+        lambda_param (float): Regularization parameter (λ).
+        epochs (int): Number of epochs.
+        eta (float): Initial learning rate.
+
+    Returns:
+        val_predictions (np.ndarray): Predictions (-1 or +1) for the validation fold.
+    """
+    theta, theta_0 = logistic_regression_train(
+        train_fold, features, target, lambda_param=lambda_param, epochs=epochs, eta=eta
+    )
+    val_predictions = logistic_regression_predict(val_fold, features, theta, theta_0)
+    return val_predictions
