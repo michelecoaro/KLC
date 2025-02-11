@@ -1,4 +1,6 @@
 .klc_venv/
 
+.klc_project/code/old_code
+
 poetry.lock
 pyproject.toml
