@@ -223,7 +223,6 @@ def perceptron_train(train_df, features, target, epochs=5):
         for i in indices:
             x_i = X[i]
             y_i = y[i]
-            # Perceptron update rule
             if y_i * (np.dot(theta, x_i) + theta_0) <= 0:
                 theta += y_i * x_i
                 theta_0 += y_i
@@ -246,24 +245,17 @@ def perceptron_train_eta(train_df, features, target, epochs=5, eta=1.0):
         theta (np.ndarray): Learned weight vector (length = number of features).
         theta_0 (float): Learned bias term.
     """
-    # Convert to numpy for faster operations
     X = train_df[features].values
     y = train_df[target].values
-
-    # Number of features
     d = len(features)
-
-    # Initialize parameters
     theta = np.zeros(d)
     theta_0 = 0.0
 
     for _ in range(epochs):
-        # Shuffle the data each epoch to help convergence
         indices = np.random.permutation(len(X))
         for i in indices:
             x_i = X[i]
             y_i = y[i]
-            # Perceptron update rule with learning rate
             if y_i * (np.dot(theta, x_i) + theta_0) <= 0:
                 theta = theta + eta * y_i * x_i
                 theta_0 = theta_0 + eta * y_i
@@ -329,7 +321,6 @@ def perceptron_classifier_func_eta(train_fold, val_fold, features, target, epoch
     val_predictions = perceptron_predict(val_fold, features, theta, theta_0)
     return val_predictions
 
-
 def pegasos_train(train_df, features, target, lambda_param=0.01, epochs=5):
     """
     Trains a linear Pegasos SVM with hinge loss.
@@ -358,19 +349,17 @@ def pegasos_train(train_df, features, target, lambda_param=0.01, epochs=5):
     t = 1  # Global iteration counter
 
     for _ in range(epochs):
-        indices = np.random.permutation(len(X))  # Shuffle data for each epoch
+        indices = np.random.permutation(len(X))
         for i in indices:
             x_i = X[i]
             y_i = y[i]
-            eta_t = 1 / (lambda_param * t)  # Learning rate for the current iteration
+            eta_t = 1 / (lambda_param * t)
             t += 1
 
             if y_i * (np.dot(theta, x_i) + theta_0) < 1:
-                # Update with hinge loss gradient
                 theta = (1 - eta_t * lambda_param) * theta + eta_t * y_i * x_i
                 theta_0 += eta_t * y_i
             else:
-                # Regularization update only
                 theta = (1 - eta_t * lambda_param) * theta
 
     return theta, theta_0
@@ -453,19 +442,13 @@ def logistic_regression_train(train_df, features, target, lambda_param=0.01, epo
         for i in indices:
             x_i = X[i]
             y_i = y[i]
-
-            # Learning rate schedule
             eta_t = eta / np.sqrt(t)
             t += 1
 
-            # Compute margin
             margin = y_i * (np.dot(theta, x_i) + theta_0)
-
-            # Gradients for logistic loss with L2 regularization
             gradient_theta = lambda_param * theta - (y_i * x_i) / (1 + np.exp(margin))
             gradient_theta_0 = -y_i / (1 + np.exp(margin))
 
-            # Update parameters
             theta -= eta_t * gradient_theta
             theta_0 -= eta_t * gradient_theta_0
 
@@ -540,18 +523,15 @@ def polynomial_feature_expansion(df, features, degree=2, include_bias=False):
     X_original = df[features].copy()
     poly_data = {}
 
-    # (optional) add bias column
     if include_bias:
         poly_data['bias'] = np.ones(len(X_original))
 
     for f in features:
         poly_data[f] = X_original[f]
-    # squared terms
     for f in features:
         new_col_name = f"{f}^2"
         poly_data[new_col_name] = X_original[f] ** 2
 
-    # pairwise interaction 
     num_feats = len(features)
     for i in range(num_feats):
         for j in range(i+1, num_feats):
@@ -561,7 +541,6 @@ def polynomial_feature_expansion(df, features, degree=2, include_bias=False):
             poly_data[new_col_name] = X_original[f_i] * X_original[f_j]
 
     expanded_df = pd.DataFrame(poly_data, index=df.index)
-
     other_cols = [col for col in df.columns if col not in features]
     return pd.concat([expanded_df, df[other_cols]], axis=1)
 
@@ -573,8 +552,7 @@ def gaussian_kernel(x, y, sigma=1.0):
     """
     Computes the Gaussian (RBF) kernel between two vectors.
 
-    The Gaussian kernel is defined as:
-        k(x, y) = exp(-||x - y||^2 / (2 * sigma^2))
+    k(x, y) = exp(-||x - y||^2 / (2 * sigma^2))
 
     Args:
         x (np.ndarray): First input vector.
@@ -592,8 +570,7 @@ def polynomial_kernel(x, y, degree=2, c=1.0):
     """
     Computes the Polynomial kernel between two vectors.
 
-    The Polynomial kernel is defined as:
-        k(x, y) = (x^T y + c)^degree
+    k(x, y) = (x^T y + c)^degree
 
     Args:
         x (np.ndarray): First input vector.
@@ -606,11 +583,33 @@ def polynomial_kernel(x, y, degree=2, c=1.0):
     """
     return (np.dot(x, y) + c) ** degree
 
+# Helper for kernel precomputation
+def compute_kernel_matrix(X1, X2, kernel_func, kernel_params={}):
+    """
+    Computes the kernel matrix between two datasets.
+
+    Args:
+        X1 (np.ndarray): First dataset of shape (n_samples1, n_features).
+        X2 (np.ndarray): Second dataset of shape (n_samples2, n_features).
+        kernel_func (callable): Kernel function.
+        kernel_params (dict): Additional parameters for the kernel function.
+
+    Returns:
+        np.ndarray: A matrix of shape (n_samples1, n_samples2) where entry (i, j) = kernel_func(X1[i], X2[j]).
+    """
+    n1 = X1.shape[0]
+    n2 = X2.shape[0]
+    K = np.zeros((n1, n2))
+    for i in range(n1):
+        for j in range(n2):
+            K[i, j] = kernel_func(X1[i], X2[j], **kernel_params)
+    return K
+
 #----------------------
 # Kernelized Perceptron
 #----------------------
 
-def kernelized_perceptron_train(X, y, kernel_func, kernel_params={}, epochs=5):
+def kernelized_perceptron_train(X, y, kernel_func, kernel_params={}, epochs=5, cache_kernel=False):
     """
     Trains a Kernelized Perceptron on data (X, y) using the given kernel_func.
     y should be in {-1, +1}.
@@ -621,32 +620,31 @@ def kernelized_perceptron_train(X, y, kernel_func, kernel_params={}, epochs=5):
         kernel_func (callable): A function k(x, x') returning a scalar kernel value.
         kernel_params (dict): Additional params for kernel_func (e.g., sigma, degree, c, etc.).
         epochs (int): Number of passes over the data.
+        cache_kernel (bool): If True, precompute the kernel matrix to speed up computations.
 
     Returns:
         alpha (np.ndarray): Coefficients for each training example (length = n_samples).
     """
     n_samples = len(y)
     alpha = np.zeros(n_samples)
-
-    # Main loop
+    if cache_kernel:
+        K = compute_kernel_matrix(X, X, kernel_func, kernel_params)
     for _ in range(epochs):
         for i in range(n_samples):
-            # Compute the decision function f(x_i)
-            # f(x_i) = sum_j [ alpha_j * y_j * k(x_j, x_i ) ]
-            # If sign(f(x_i)) != y_i, increment alpha_i
             f_i = 0.0
-            x_i = X[i]
-            for j in range(n_samples):
-                if alpha[j] != 0:  # small optimization
-                    f_i += alpha[j] * y[j] * kernel_func(X[j], x_i, **kernel_params)
-
-            # Check for misclassification
+            if cache_kernel:
+                for j in range(n_samples):
+                    if alpha[j] != 0:
+                        f_i += alpha[j] * y[j] * K[j, i]
+            else:
+                for j in range(n_samples):
+                    if alpha[j] != 0:
+                        f_i += alpha[j] * y[j] * kernel_func(X[j], X[i], **kernel_params)
             if np.sign(f_i) != y[i]:
                 alpha[i] += 1.0
-
     return alpha
 
-def kernelized_perceptron_predict(X_train, y_train, alpha, X_test, kernel_func, kernel_params={}):
+def kernelized_perceptron_predict(X_train, y_train, alpha, X_test, kernel_func, kernel_params={}, cache_kernel=False):
     """
     Predict labels for X_test using the trained Kernelized Perceptron.
 
@@ -657,6 +655,7 @@ def kernelized_perceptron_predict(X_train, y_train, alpha, X_test, kernel_func, 
         X_test (np.ndarray): Test data (n_test, n_features).
         kernel_func (callable): Same kernel function used during training.
         kernel_params (dict): Params for kernel_func.
+        cache_kernel (bool): If True, precompute the cross-kernel matrix between X_train and X_test.
 
     Returns:
         predictions (np.ndarray): Predicted labels (-1 or +1) for the test set.
@@ -664,21 +663,27 @@ def kernelized_perceptron_predict(X_train, y_train, alpha, X_test, kernel_func, 
     n_train = len(y_train)
     n_test = len(X_test)
     predictions = np.zeros(n_test)
-
+    
+    if cache_kernel:
+        K_test = compute_kernel_matrix(X_train, X_test, kernel_func, kernel_params)
+    
     for i in range(n_test):
         f_i = 0.0
-        x_i = X_test[i]
-        for j in range(n_train):
-            if alpha[j] != 0:
-                f_i += alpha[j] * y_train[j] * kernel_func(X_train[j], x_i, **kernel_params)
+        if cache_kernel:
+            for j in range(n_train):
+                if alpha[j] != 0:
+                    f_i += alpha[j] * y_train[j] * K_test[j, i]
+        else:
+            for j in range(n_train):
+                if alpha[j] != 0:
+                    f_i += alpha[j] * y_train[j] * kernel_func(X_train[j], X_test[i], **kernel_params)
         predictions[i] = np.sign(f_i)
         if predictions[i] == 0:
-            # In case f_i = 0, decide +1 or -1 (choose +1 by convention)
             predictions[i] = 1.0
-
     return predictions.astype(int)
 
-def kernelized_perceptron_classifier_func(train_fold, val_fold, features, target, kernel_func, kernel_params={}, epochs=5):
+def kernelized_perceptron_classifier_func(train_fold, val_fold, features, target,
+                                            kernel_func, kernel_params={}, epochs=5, cache_kernel=False):
     """
     A classifier_func for k_fold_cross_validation, specifically for the Kernelized Perceptron.
 
@@ -690,6 +695,7 @@ def kernelized_perceptron_classifier_func(train_fold, val_fold, features, target
         kernel_func (callable): Kernel function (gaussian_kernel or polynomial_kernel).
         kernel_params (dict): Additional kernel parameters.
         epochs (int): Number of epochs for training.
+        cache_kernel (bool): If True, precompute the kernel matrix to speed up computations.
 
     Returns:
         val_preds (np.ndarray): Predicted labels for val_fold.
@@ -698,39 +704,31 @@ def kernelized_perceptron_classifier_func(train_fold, val_fold, features, target
     y_train = train_fold[target].values
     X_val = val_fold[features].values
 
-    # Train kernelized perceptron
     alpha = kernelized_perceptron_train(
         X_train, y_train,
         kernel_func=kernel_func,
         kernel_params=kernel_params,
-        epochs=epochs
+        epochs=epochs,
+        cache_kernel=cache_kernel
     )
 
-    # Predict on val_fold
     val_preds = kernelized_perceptron_predict(
         X_train, y_train,
         alpha,
         X_val,
         kernel_func=kernel_func,
-        kernel_params=kernel_params
+        kernel_params=kernel_params,
+        cache_kernel=cache_kernel
     )
     return val_preds
 
-def kernelized_pegasos_train(X, y, kernel_func, kernel_params={}, lambda_param=0.01, epochs=5):
+#----------------------
+# Kernelized Pegasos SVM
+#----------------------
+
+def kernelized_pegasos_train(X, y, kernel_func, kernel_params={}, lambda_param=0.01, epochs=5, cache_kernel=False):
     """
     Trains a kernelized Pegasos SVM on (X, y) using the provided kernel_func (e.g. Gaussian, Polynomial).
-    The pseudocode from the question is effectively:
-
-    INPUT: S, λ, T
-    INITIALIZE: alpha^1 = 0
-    FOR t = 1 to T:
-        pick i_t randomly
-        margin = y[i_t] * (1/(lambda * t)) * sum_j [ alpha[j] * y[j] * K(x_j, x_{i_t}) ]
-        if margin < 1:
-            alpha[i_t] += 1
-    OUTPUT: alpha^{T+1}
-
-    We implement T = epochs * n, picking a random index each iteration.
 
     Args:
         X (np.ndarray): Training data, shape (n_samples, n_features).
@@ -738,7 +736,8 @@ def kernelized_pegasos_train(X, y, kernel_func, kernel_params={}, lambda_param=0
         kernel_func (callable): Kernel function k(x1, x2, **kernel_params).
         kernel_params (dict): Additional parameters for the kernel function.
         lambda_param (float): Regularization parameter λ.
-        epochs (int): Number of passes (epochs) over the data (multiplied by n to get T).
+        epochs (int): Number of passes (epochs) over the data.
+        cache_kernel (bool): If True, precompute the kernel matrix for training.
 
     Returns:
         alpha (np.ndarray): The learned alpha coefficients of shape (n_samples,).
@@ -746,37 +745,28 @@ def kernelized_pegasos_train(X, y, kernel_func, kernel_params={}, lambda_param=0
     """
     n_samples = len(y)
     alpha = np.zeros(n_samples, dtype=float)
-
-    # T = epochs * n_samples : total updates
     T = epochs * n_samples
-
+    if cache_kernel:
+        K = compute_kernel_matrix(X, X, kernel_func, kernel_params)
     for t in range(1, T + 1):
-        # random sample i_t
         i_t = np.random.randint(0, n_samples)
-
-        # margin
         sum_k = 0.0
-        x_i_t = X[i_t]
-        for j in range(n_samples):
-            if alpha[j] != 0:
-                sum_k += alpha[j] * y[j] * kernel_func(X[j], x_i_t, **kernel_params)
-
+        if cache_kernel:
+            for j in range(n_samples):
+                if alpha[j] != 0:
+                    sum_k += alpha[j] * y[j] * K[j, i_t]
+        else:
+            for j in range(n_samples):
+                if alpha[j] != 0:
+                    sum_k += alpha[j] * y[j] * kernel_func(X[j], X[i_t], **kernel_params)
         margin = y[i_t] * (1.0 / (lambda_param * t)) * sum_k
-
-        # if margin < 1, update alpha
         if margin < 1:
             alpha[i_t] += 1.0
-
     return alpha, T
 
-
-def kernelized_pegasos_predict(X_train, y_train, alpha, T, X_test, kernel_func, kernel_params={}, lambda_param=0.01):
+def kernelized_pegasos_predict(X_train, y_train, alpha, T, X_test, kernel_func, kernel_params={}, lambda_param=0.01, cache_kernel=False):
     """
     Predicts labels for X_test using the trained kernelized Pegasos SVM.
-
-    The decision function is:
-        f(x) = (1 / (lambda * T)) * sum_j [ alpha[j] * y[j] * K(x_j, x) ]
-    We take the sign of f(x).
 
     Args:
         X_train (np.ndarray): Training data (n_train, n_features).
@@ -787,6 +777,7 @@ def kernelized_pegasos_predict(X_train, y_train, alpha, T, X_test, kernel_func, 
         kernel_func (callable): Kernel function used in training.
         kernel_params (dict): Additional parameters for the kernel function.
         lambda_param (float): The same λ used in training.
+        cache_kernel (bool): If True, precompute the cross-kernel matrix between training and test data.
 
     Returns:
         predictions (np.ndarray): Predicted labels (-1 or +1) for X_test.
@@ -794,27 +785,31 @@ def kernelized_pegasos_predict(X_train, y_train, alpha, T, X_test, kernel_func, 
     n_train = len(X_train)
     n_test = len(X_test)
     predictions = np.zeros(n_test)
-
     factor = 1.0 / (lambda_param * T)
-
+    
+    if cache_kernel:
+        K_test = compute_kernel_matrix(X_train, X_test, kernel_func, kernel_params)
+    
     for i in range(n_test):
-        x_i = X_test[i]
         f_x = 0.0
-        for j in range(n_train):
-            if alpha[j] != 0:
-                f_x += alpha[j] * y_train[j] * kernel_func(X_train[j], x_i, **kernel_params)
+        if cache_kernel:
+            for j in range(n_train):
+                if alpha[j] != 0:
+                    f_x += alpha[j] * y_train[j] * K_test[j, i]
+        else:
+            for j in range(n_train):
+                if alpha[j] != 0:
+                    f_x += alpha[j] * y_train[j] * kernel_func(X_train[j], X_test[i], **kernel_params)
         f_x *= factor
-        # sign
         predictions[i] = np.sign(f_x)
         if predictions[i] == 0:
-            predictions[i] = 1.0  # break ties with +1
-
+            predictions[i] = 1.0
     return predictions.astype(int)
 
-
-def kernelized_pegasos_classifier_func(train_fold, val_fold, features, target, kernel_func, kernel_params={}, lambda_param=0.01, epochs=5):
+def kernelized_pegasos_classifier_func(train_fold, val_fold, features, target,
+                                        kernel_func, kernel_params={}, lambda_param=0.01, epochs=5, cache_kernel=False):
     """
-    A classifier_func for k-fold cross-validation. Trains kernelized Pegasos on train_fold,
+    A classifier_func for k_fold_cross_validation. Trains kernelized Pegasos on train_fold,
     then predicts on val_fold.
 
     Args:
@@ -823,9 +818,10 @@ def kernelized_pegasos_classifier_func(train_fold, val_fold, features, target, k
         features (list): List of feature names to use.
         target (str): Target column name (in {-1, +1}).
         kernel_func (callable): e.g. gaussian_kernel or polynomial_kernel.
-        kernel_params (dict): Additional params for the kernel function (e.g. sigma, degree, c).
+        kernel_params (dict): Additional params for the kernel function.
         lambda_param (float): Regularization parameter λ.
         epochs (int): Number of epochs.
+        cache_kernel (bool): If True, precompute kernel matrices to speed up computations.
 
     Returns:
         val_preds (np.ndarray): Predicted labels for val_fold.
@@ -834,21 +830,21 @@ def kernelized_pegasos_classifier_func(train_fold, val_fold, features, target, k
     y_train = train_fold[target].values
     X_val = val_fold[features].values
 
-    # Train
     alpha, T = kernelized_pegasos_train(
         X_train, y_train,
         kernel_func=kernel_func,
         kernel_params=kernel_params,
         lambda_param=lambda_param,
-        epochs=epochs
+        epochs=epochs,
+        cache_kernel=cache_kernel
     )
 
-    # Predict
     val_preds = kernelized_pegasos_predict(
         X_train, y_train, alpha, T,
         X_val,
         kernel_func=kernel_func,
         kernel_params=kernel_params,
-        lambda_param=lambda_param
+        lambda_param=lambda_param,
+        cache_kernel=cache_kernel
     )
     return val_preds
