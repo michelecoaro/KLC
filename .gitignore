@@ -1,6 +1,6 @@
 .klc_venv/
-
-.klc_project/code/old_code
-
+.klc_project/code/__pycache__
 poetry.lock
 pyproject.toml
+
+.klc_project/.DS_Store
